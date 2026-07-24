@@ -1,0 +1,46 @@
+{
+  "name": "backend",
+  "version": "0.1.0",
+  "description": "Car Portal backend API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "test:contracts": "node --import tsx --test src/**/*.contract.test.ts",
+    "start": "node dist/index.js",
+    "worker": "tsx src/workers/reminder-worker.ts",
+    "worker:dev": "tsx watch src/workers/reminder-worker.ts",
+    "worker:start": "node dist/workers/reminder-worker.js",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:start": "node dist/db/migrate.js"
+  },
+  "keywords": [
+    "node",
+    "typescript",
+    "postgresql",
+    "driver-portal"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie": "^1.1.1",
+    "dotenv": "^17.3.1",
+    "google-auth-library": "^10.6.1",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^8.0.2",
+    "pg": "^8.20.0",
+    "sanitize-html": "^2.17.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.5.0",
+    "@types/nodemailer": "^7.0.11",
+    "@types/pg": "^8.18.0",
+    "@types/sanitize-html": "^2.16.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
