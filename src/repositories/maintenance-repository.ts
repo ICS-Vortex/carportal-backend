@@ -34,6 +34,7 @@ type TemplateItemRow = {
   interval_km: number | null;
   interval_months: number | null;
   notes_uk: string | null;
+  labor_price_uah: number | null;
 };
 
 export type VehicleMaintenancePlanView = {
@@ -294,7 +295,8 @@ async function getTemplateItems(templateId: string, client: PoolClient | typeof 
         mp.category as procedure_category,
         msi.interval_km,
         msi.interval_months,
-        msi.notes_uk
+        msi.notes_uk,
+        COALESCE(msi.labor_price_uah, mp.labor_price_uah) as labor_price_uah
       from maintenance_schedule_items msi
       inner join maintenance_procedures mp on mp.id = msi.procedure_id and mp.deleted = false
       where msi.template_id = $1
@@ -459,7 +461,7 @@ export async function getVehicleMaintenancePlan(vehicle: VehicleRecord, userId?:
         isStale: true,
         wasAutoReassigned: false,
         latestTemplateUpdatedAt: null,
-        message: "Попередній план обслуговування більше недоступний. Зверніться до адміністратора, щоб підготувати актуальний план для цього авто."
+        message: "Попередній план обслуговування більше недоступний. Запросіть новий регламент для цього авто."
       };
     } else if (plan.source_template_updated_at.getTime() < templateVersion.last_changed_at.getTime()) {
       if (canAutoReassignPlan(itemsResult.rows)) {
@@ -573,8 +575,8 @@ export async function assignTemplateToVehicle(vehicle: VehicleRecord, templateId
 
     const planResult = await client.query<VehicleMaintenancePlanRecord>(
       `
-        insert into vehicle_maintenance_plans (vehicle_id, template_id, template_name, source_template_updated_at)
-        values ($1, $2, $3, $4)
+        insert into vehicle_maintenance_plans (id, vehicle_id, template_id, template_name, source_template_updated_at, assigned_at, updated_at)
+        values (gen_random_uuid(), $1, $2, $3, $4, now(), now())
         returning *
       `,
       [vehicle.id, templateHeader.id, templateHeader.name_uk, templateVersion?.last_changed_at ?? new Date()]
@@ -588,6 +590,7 @@ export async function assignTemplateToVehicle(vehicle: VehicleRecord, templateId
       await client.query(
         `
           insert into vehicle_maintenance_plan_items (
+            id,
             plan_id,
             procedure_id,
             procedure_title,
@@ -595,12 +598,15 @@ export async function assignTemplateToVehicle(vehicle: VehicleRecord, templateId
             interval_km,
             interval_months,
             notes_uk,
+            labor_price_uah,
             sort_order,
             baseline_date,
             baseline_mileage_km,
-            status
+            status,
+            created_at,
+            updated_at
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+          values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', now(), now())
         `,
         [
           plan.id,
@@ -610,6 +616,7 @@ export async function assignTemplateToVehicle(vehicle: VehicleRecord, templateId
           item.interval_km,
           item.interval_months,
           item.notes_uk,
+          item.labor_price_uah,
           index + 1,
           plan.assigned_at.toISOString().slice(0, 10),
           vehicle.mileage_km
@@ -655,8 +662,8 @@ export async function createMissingMaintenancePlanRequest(input: {
 
   const result = await pool.query<MaintenancePlanRequestRecord>(
     `
-      insert into maintenance_plan_requests (user_id, vehicle_id, request_note)
-      values ($1, $2, $3)
+      insert into maintenance_plan_requests (id, user_id, vehicle_id, request_note, created_at, updated_at)
+      values (gen_random_uuid(), $1, $2, $3, now(), now())
       returning *
     `,
     [input.userId, input.vehicle.id, input.requestNote ?? null]

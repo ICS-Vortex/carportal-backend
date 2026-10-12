@@ -159,7 +159,7 @@ export async function mobileRegister(context: HandlerContext): Promise<void> {
   if (existingUser) {
     sendJson(context.res, 409, {
       code: existingUser.deleted ? "account_deactivated" : "email_already_exists",
-      message: existingUser.deleted ? "Акаунт з таким email деактивовано. Зверніться до адміністратора для відновлення." : "Користувач з таким email вже існує."
+      message: existingUser.deleted ? "Акаунт з таким email деактивовано." : "Користувач з таким email вже існує."
     });
     return;
   }
@@ -180,12 +180,12 @@ export async function mobileLogin(context: HandlerContext): Promise<void> {
   const user = await findUserByEmail(input.email);
 
   if (user?.deleted) {
-    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано. Зверніться до адміністратора." });
+    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано." });
     return;
   }
 
   if (user?.is_blocked) {
-    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано адміністратором." });
+    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано." });
     return;
   }
 
@@ -230,12 +230,12 @@ export async function mobileGoogleLogin(context: HandlerContext): Promise<void> 
   }
 
   if (user.deleted) {
-    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано. Зверніться до адміністратора." });
+    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано." });
     return;
   }
 
   if (user.is_blocked) {
-    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано адміністратором." });
+    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано." });
     return;
   }
 
@@ -294,7 +294,7 @@ export async function mobileRefresh(context: HandlerContext): Promise<void> {
     if (user.is_blocked) {
       await revokeRefreshSessionFamily(refreshSession.family_id, client);
       await client.query("commit");
-      sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано адміністратором." });
+      sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано." });
       return;
     }
 

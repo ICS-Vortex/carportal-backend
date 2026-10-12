@@ -51,6 +51,7 @@ export type ScheduleRow = {
   interval_km: number | null;
   interval_months: number | null;
   notes_uk: string | null;
+  labor_price_uah: number | null;
 };
 
 type VehicleCatalogRow = {
@@ -333,7 +334,8 @@ export async function listScheduleTemplates(): Promise<ScheduleRow[]> {
       mp.title_uk as procedure_title,
       msi.interval_km,
       msi.interval_months,
-      msi.notes_uk
+      msi.notes_uk,
+      COALESCE(msi.labor_price_uah, mp.labor_price_uah) as labor_price_uah
     from maintenance_schedule_templates mst
     inner join vehicle_generations vg on vg.id = mst.generation_id
     inner join vehicle_models vm on vm.id = vg.model_id

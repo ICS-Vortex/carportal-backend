@@ -14,7 +14,7 @@ import type { RouteDefinition } from "../utils/http";
 
 export const authRoutes: RouteDefinition[] = [
   { method: "GET", path: API_ROUTES.auth.csrf, handler: getCsrf },
-  { method: "GET", path: API_ROUTES.auth.me, handler: me, auth: true },
+  { method: "GET", path: API_ROUTES.auth.me, handler: me },
   { method: "PATCH", path: API_ROUTES.auth.profile, handler: updateProfile, auth: true, csrf: true },
   { method: "POST", path: API_ROUTES.auth.register, handler: register, csrf: true },
   { method: "POST", path: API_ROUTES.auth.login, handler: login, csrf: true },

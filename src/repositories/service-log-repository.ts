@@ -69,8 +69,8 @@ export async function createServiceLog(input: {
 
     const logResult = await client.query<ServiceLogRecord>(
       `
-        insert into service_logs (vehicle_id, service_date, mileage_km, service_station, notes_uk)
-        values ($1, $2, $3, $4, $5)
+        insert into service_logs (id, vehicle_id, service_date, mileage_km, service_station, notes_uk, created_at)
+        values (gen_random_uuid(), $1, $2, $3, $4, $5, now())
         returning *
       `,
       [input.vehicleId, input.serviceDate, input.mileageKm, input.serviceStation ?? null, input.notesUk ?? null]
@@ -79,8 +79,8 @@ export async function createServiceLog(input: {
     for (const item of input.items) {
       await client.query(
         `
-          insert into service_log_items (service_log_id, procedure_id, notes_uk)
-          values ($1, $2, $3)
+          insert into service_log_items (id, service_log_id, procedure_id, notes_uk, created_at)
+          values (gen_random_uuid(), $1, $2, $3, now())
         `,
         [logResult.rows[0].id, item.procedureId, item.notesUk ?? null]
       );

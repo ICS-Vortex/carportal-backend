@@ -77,6 +77,7 @@ export interface ProcedureRecord {
   description_uk: string | null;
   default_interval_km: number | null;
   default_interval_months: number | null;
+  labor_price_uah: number | null;
   category: string;
   deleted: boolean;
   deleted_at: Date | null;
@@ -122,6 +123,7 @@ export interface VehicleMaintenancePlanItemRecord {
   interval_km: number | null;
   interval_months: number | null;
   notes_uk: string | null;
+  labor_price_uah: number | null;
   sort_order: number;
   status: "pending" | "done" | "skipped";
   baseline_date: string;

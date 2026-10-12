@@ -42,18 +42,5 @@ export const API_ROUTES = {
   catalog: {
     list: "/v1/catalog",
     reminders: "/v1/reminders"
-  },
-  admin: {
-    overview: "/v1/admin/overview",
-    missingPlanRequestDetail: "/v1/admin/missing-plan-requests/:requestId",
-    users: "/v1/admin/users",
-    userDetail: "/v1/admin/users/:userId",
-    catalog: "/v1/admin/catalog",
-    procedures: "/v1/admin/procedures",
-    procedureDetail: "/v1/admin/procedures/:procedureId",
-    templates: "/v1/admin/templates",
-    templateDetail: "/v1/admin/templates/:templateId",
-    templateItems: "/v1/admin/template-items",
-    templateItemDetail: "/v1/admin/template-items/:scheduleItemId"
   }
 } as const;

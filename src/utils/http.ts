@@ -21,7 +21,6 @@ export type RouteDefinition = {
   handler: (context: HandlerContext) => Promise<void>;
   auth?: boolean;
   csrf?: boolean;
-  admin?: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,12 +179,41 @@ export function clearCookie(res: ServerResponse, name: string, httpOnly = false)
   setCookie(res, name, "", { httpOnly, maxAge: 0, sameSite: "lax" });
 }
 
+const hostAliases: Record<string, string> = {
+  "carmain.local": "carmain.localhost.com",
+  "carmain.localhost.com": "carmain.local",
+  "api.carmain.local": "api.carmain.localhost.com",
+  "api.carmain.localhost.com": "api.carmain.local"
+};
+
+function withHostAlias(origin: string): string[] {
+  try {
+    const url = new URL(origin);
+    const alias = hostAliases[url.hostname];
+
+    if (!alias) {
+      return [url.origin];
+    }
+
+    url.hostname = alias;
+    return [origin, url.origin];
+  } catch {
+    return [origin];
+  }
+}
+
+function allowedOrigins(): Set<string> {
+  return new Set(
+    [env.FRONTEND_ORIGIN, env.API_ORIGIN, env.APP_BASE_URL].flatMap(withHostAlias)
+  );
+}
+
 export function isAllowedOrigin(originHeader: string | undefined): boolean {
   if (!originHeader) {
     return true;
   }
 
-  return originHeader === env.FRONTEND_ORIGIN || originHeader === env.API_ORIGIN;
+  return allowedOrigins().has(originHeader);
 }
 
 export function matchRoute(

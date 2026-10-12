@@ -54,6 +54,14 @@ test("GET /v1/public/landing returns a success envelope", async () => {
   assert.equal(typeof payload.data?.generatedAt, "string");
 });
 
+test("former admin routes are not part of the user API", async () => {
+  const response = await fetch(`${baseUrl}/v1/admin/overview`);
+  const payload = await response.json() as { error?: { code?: string } };
+
+  assert.equal(response.status, 404);
+  assert.equal(payload.error?.code, "route_not_found");
+});
+
 test("GET unknown route returns structured error envelope", async () => {
   const response = await fetch(`${baseUrl}/v1/does-not-exist`);
   const payload = await response.json() as { error?: { code?: string; message?: string } };
@@ -67,13 +75,13 @@ test("GET unknown route returns structured error envelope", async () => {
   });
 });
 
-test("GET /v1/auth/me without session returns machine-readable auth error", async () => {
+test("GET /v1/auth/me without session returns anonymous session payload", async () => {
   const response = await fetch(`${baseUrl}/v1/auth/me`);
-  const payload = await response.json() as { error?: { code?: string; message?: string } };
+  const payload = await response.json() as { data?: { user?: unknown; csrfReady?: boolean } };
 
-  assert.equal(response.status, 401);
-  assert.equal(payload.error?.code, "authentication_required");
-  assert.equal(payload.error?.message, "Потрібна авторизація.");
+  assert.equal(response.status, 200);
+  assert.equal(payload.data?.user, null);
+  assert.equal(payload.data?.csrfReady, false);
 });
 
 test("POST /v1/auth/login without CSRF returns structured csrf error", async () => {

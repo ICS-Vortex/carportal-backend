@@ -1,4 +1,3 @@
-import { adminRoutes } from "./admin-routes";
 import type { RouteDefinition } from "../utils/http";
 import { authRoutes } from "./auth-routes";
 import { catalogRoutes } from "./catalog-routes";
@@ -10,7 +9,6 @@ import { vehicleRoutes } from "./vehicle-routes";
 export const routes: RouteDefinition[] = [
   ...publicRoutes,
   ...authRoutes,
-  ...adminRoutes,
   ...vehicleRoutes,
   ...maintenanceRoutes,
   ...serviceLogRoutes,

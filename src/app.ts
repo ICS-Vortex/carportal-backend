@@ -122,7 +122,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       if (dbUser.is_blocked) {
         clearCookie(res, SESSION_COOKIE_NAME, true);
         clearCookie(res, CSRF_COOKIE_NAME);
-        sendJson(res, 403, { code: "account_blocked", message: "Акаунт заблоковано адміністратором." });
+        sendJson(res, 403, { code: "account_blocked", message: "Акаунт заблоковано." });
         return;
       }
 
@@ -133,11 +133,6 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
         role: dbUser.role,
         sessionId: tokenUser?.sessionId ?? null
       };
-    }
-
-    if (route.admin && user?.role !== "admin") {
-      sendJson(res, 403, { code: "admin_role_required", message: "Потрібні права адміністратора." });
-      return;
     }
 
     if (route.csrf && req.method && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
@@ -165,16 +160,6 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
     await route.handler({ req, res, params, body, user });
   } catch (error) {
-    if (error instanceof Error && error.message === "SELF_ADMIN_MUTATION") {
-      sendJson(res, 409, { code: "self_admin_mutation", message: "Не можна змінити або видалити власний адмін-акаунт через цю дію." });
-      return;
-    }
-
-    if (error instanceof Error && error.message === "LAST_ADMIN_MUTATION") {
-      sendJson(res, 409, { code: "last_admin_mutation", message: "У системі має залишитися принаймні один активний адміністратор." });
-      return;
-    }
-
     if (error instanceof SyntaxError) {
       sendJson(res, 400, { code: "invalid_json", message: "Некоректний JSON у тілі запиту." });
       return;

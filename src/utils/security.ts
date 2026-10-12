@@ -18,7 +18,9 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function comparePassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+  // CMS bcrypt hashes use the PHP $2y$ prefix. bcryptjs verifies $2a$ and $2b$.
+  const normalized = hash.startsWith("$2y$") ? `$2b$${hash.slice(4)}` : hash;
+  return bcrypt.compare(password, normalized);
 }
 
 export function signSessionToken(user: AuthenticatedUser): string {

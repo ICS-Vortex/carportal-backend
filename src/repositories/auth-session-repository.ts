@@ -16,8 +16,8 @@ export async function createRefreshSession(input: {
 
   const result = await client.query<AuthRefreshSessionRecord>(
     `
-      insert into auth_refresh_sessions (user_id, family_id, token_hash, user_agent, expires_at)
-      values ($1, coalesce($2, gen_random_uuid()), $3, $4, $5)
+      insert into auth_refresh_sessions (id, user_id, family_id, token_hash, user_agent, expires_at, created_at, updated_at)
+      values (gen_random_uuid(), $1, coalesce($2, gen_random_uuid()), $3, $4, $5, now(), now())
       returning *
     `,
     [input.userId, input.familyId ?? null, tokenHash, input.userAgent ?? null, getRefreshSessionExpiryDate()]

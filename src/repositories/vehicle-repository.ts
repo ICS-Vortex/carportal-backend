@@ -49,8 +49,8 @@ export async function createVehicle(input: {
 }): Promise<VehicleRecord> {
   const inserted = await pool.query<{ id: string }>(
     `
-      insert into vehicles (user_id, generation_id, configuration_id, year, vin, license_plate, image_url, mileage_km)
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      insert into vehicles (id, user_id, generation_id, configuration_id, year, vin, license_plate, image_url, mileage_km, created_at, updated_at)
+      values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, now(), now())
       returning id
     `,
     [

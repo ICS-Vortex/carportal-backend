@@ -144,14 +144,17 @@ async function syncReminderSnapshots(userId?: string): Promise<void> {
       await client.query(
         `
           insert into reminders (
+            id,
             user_id,
             vehicle_id,
             procedure_id,
             due_date,
             due_mileage_km,
-            status
+            status,
+            created_at,
+            updated_at
           )
-          values ($1, $2, $3, $4, $5, $6)
+          values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now(), now())
           on conflict (user_id, vehicle_id, procedure_id)
           do update set
             due_date = excluded.due_date,

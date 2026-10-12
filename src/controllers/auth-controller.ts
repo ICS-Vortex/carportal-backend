@@ -55,6 +55,48 @@ const deleteAccountSchema = z.object({
 
 let oauthClient: OAuth2Client | null = null;
 
+type GoogleIdTokenPayload = {
+  sub?: string;
+  email?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+};
+
+function resolveGoogleFullName(payload: GoogleIdTokenPayload): string {
+  const displayName = payload.name?.trim();
+  if (displayName && !/\bundefined\b/i.test(displayName)) {
+    return displayName;
+  }
+
+  const composed = [payload.given_name?.trim(), payload.family_name?.trim()].filter(Boolean).join(" ");
+  if (composed.length >= 2) {
+    return composed;
+  }
+
+  const email = payload.email?.trim();
+  if (email) {
+    return email.split("@")[0] ?? email;
+  }
+
+  return "User";
+}
+
+function isWeakDisplayName(fullName: string, email: string): boolean {
+  const normalized = fullName.trim();
+  if (normalized.length < 2) {
+    return true;
+  }
+
+  if (/\bundefined\b/i.test(normalized)) {
+    return true;
+  }
+
+  const localPart = email.split("@")[0]?.toLowerCase();
+  return normalized.toLowerCase() === email.toLowerCase() || normalized.toLowerCase() === localPart;
+}
+
 function toAuthUserPayload(user: {
   id: string;
   email: string;
@@ -117,7 +159,7 @@ export async function register(context: HandlerContext): Promise<void> {
   if (existingUser) {
     sendJson(context.res, 409, {
       code: existingUser.deleted ? "account_deactivated" : "email_already_exists",
-      message: existingUser.deleted ? "Акаунт з таким email деактивовано. Зверніться до адміністратора для відновлення." : "Користувач з таким email вже існує."
+      message: existingUser.deleted ? "Акаунт з таким email деактивовано." : "Користувач з таким email вже існує."
     });
     return;
   }
@@ -140,12 +182,12 @@ export async function login(context: HandlerContext): Promise<void> {
   const user = await findUserByEmail(input.email);
 
   if (user?.deleted) {
-    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано. Зверніться до адміністратора." });
+    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано." });
     return;
   }
 
   if (user?.is_blocked) {
-    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано адміністратором." });
+    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано." });
     return;
   }
 
@@ -193,12 +235,12 @@ export async function googleLogin(context: HandlerContext): Promise<void> {
   }
 
   if (user.deleted) {
-    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано. Зверніться до адміністратора." });
+    sendJson(context.res, 403, { code: "account_deactivated", message: "Акаунт деактивовано." });
     return;
   }
 
   if (user.is_blocked) {
-    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано адміністратором." });
+    sendJson(context.res, 403, { code: "account_blocked", message: "Акаунт заблоковано." });
     return;
   }
 
@@ -334,16 +376,27 @@ export async function deleteAccount(context: HandlerContext): Promise<void> {
   sendJson(context.res, 200, { ok: true, message: "Акаунт деактивовано. Дані збережено, але вхід заблоковано." });
 }
 
+function sendAnonymousMe(context: HandlerContext): void {
+  const cookies = getCookies(context.req);
+
+  sendJson(context.res, 200, {
+    user: null,
+    csrfReady: Boolean(cookies[CSRF_COOKIE_NAME])
+  });
+}
+
 export async function me(context: HandlerContext): Promise<void> {
   if (!context.user) {
-    sendJson(context.res, 401, { code: "unauthorized", message: "Неавторизовано." });
+    sendAnonymousMe(context);
     return;
   }
 
   const user = await findUserById(context.user.userId);
 
-  if (!user) {
-    sendJson(context.res, 401, { code: "unauthorized", message: "Неавторизовано." });
+  if (!user || user.deleted || user.is_blocked) {
+    clearCookie(context.res, SESSION_COOKIE_NAME, true);
+    clearCookie(context.res, CSRF_COOKIE_NAME);
+    sendAnonymousMe(context);
     return;
   }
 
