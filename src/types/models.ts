@@ -8,6 +8,7 @@ export interface UserRecord {
   role: "user" | "admin";
   is_blocked: boolean;
   blocked_at: Date | null;
+  preferred_service_station_id: string | null;
   deleted: boolean;
   deleted_at: Date | null;
   created_at: Date;
@@ -59,11 +60,15 @@ export interface VehicleRecord {
   engine_name: string;
   transmission_name: string;
   drivetrain_label: string | null;
+  fuel_type: string | null;
   year: number;
   vin: string | null;
   license_plate: string | null;
   image_url: string | null;
   mileage_km: number;
+  last_service_date: string | null;
+  last_service_mileage_km: number | null;
+  has_maintenance_plan: boolean;
   deleted: boolean;
   deleted_at: Date | null;
   created_at: Date;

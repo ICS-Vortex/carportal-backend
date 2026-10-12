@@ -1,6 +1,7 @@
 import type { RouteDefinition } from "../utils/http";
 import { authRoutes } from "./auth-routes";
 import { catalogRoutes } from "./catalog-routes";
+import { cmsUploadRoutes } from "./cms-upload-routes";
 import { maintenanceRoutes } from "./maintenance-routes";
 import { publicRoutes } from "./public-routes";
 import { serviceLogRoutes } from "./service-log-routes";
@@ -12,5 +13,6 @@ export const routes: RouteDefinition[] = [
   ...vehicleRoutes,
   ...maintenanceRoutes,
   ...serviceLogRoutes,
-  ...catalogRoutes
+  ...catalogRoutes,
+  ...cmsUploadRoutes
 ];

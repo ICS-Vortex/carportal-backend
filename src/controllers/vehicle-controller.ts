@@ -1,11 +1,17 @@
 import sanitizeHtml from "sanitize-html";
 import { z } from "zod";
 
-import { env } from "../config/env";
 import { findVehicleConfigurationById, listVehicleCatalog } from "../repositories/catalog-repository";
 import { syncVehiclePlanForVehicleCatalogChange } from "../repositories/maintenance-repository";
-import { createVehicle, listVehiclesByUser, softDeleteVehicle, updateVehicleDetails, updateVehicleMileage } from "../repositories/vehicle-repository";
-import { saveVehicleImageDataUrl } from "../services/vehicle-image-storage";
+import {
+  createVehicle,
+  findVehicleByIdForUser,
+  listVehiclesByUser,
+  softDeleteVehicle,
+  updateVehicleDetails,
+  updateVehicleMileage
+} from "../repositories/vehicle-repository";
+import { deleteManagedImageUrl, isManagedVehicleImageUrl, saveVehicleImageDataUrl } from "../services/image-upload";
 import type { HandlerContext } from "../utils/http";
 import { sendJson } from "../utils/http";
 
@@ -31,7 +37,7 @@ function normalizeVehicleImageUrl(imageUrl?: string | null): string | null {
     return null;
   }
 
-  return imageUrl.startsWith(`${env.API_ORIGIN}/uploads/vehicles/`) ? imageUrl : null;
+  return isManagedVehicleImageUrl(imageUrl) ? imageUrl : null;
 }
 
 async function validateVehicleConfiguration(configurationId: string, year: number): Promise<{
@@ -99,6 +105,9 @@ export async function updateVehicleHandler(context: HandlerContext): Promise<voi
     return;
   }
 
+  const existingVehicle = await findVehicleByIdForUser(context.params.vehicleId, context.user!.userId);
+  const nextImageUrl = normalizeVehicleImageUrl(input.imageUrl);
+
   const vehicle = await updateVehicleDetails({
     vehicleId: context.params.vehicleId,
     userId: context.user!.userId,
@@ -107,13 +116,19 @@ export async function updateVehicleHandler(context: HandlerContext): Promise<voi
     year: input.year,
     vin: input.vin ? input.vin.toUpperCase() : null,
     licensePlate: input.licensePlate ? sanitizeHtml(input.licensePlate, { allowedTags: [], allowedAttributes: {} }) : null,
-    imageUrl: normalizeVehicleImageUrl(input.imageUrl),
+    imageUrl: nextImageUrl,
     mileageKm: input.mileageKm
   });
 
   if (!vehicle) {
     sendJson(context.res, 404, { code: "vehicle_not_found", message: "Автомобіль не знайдено." });
     return;
+  }
+
+  const previousImageUrl = existingVehicle?.image_url ?? null;
+
+  if (previousImageUrl && previousImageUrl !== nextImageUrl) {
+    await deleteManagedImageUrl(previousImageUrl);
   }
 
   await syncVehiclePlanForVehicleCatalogChange(vehicle);
@@ -160,12 +175,15 @@ export async function updateVehicleMileageHandler(context: HandlerContext): Prom
 }
 
 export async function deleteVehicleHandler(context: HandlerContext): Promise<void> {
+  const existingVehicle = await findVehicleByIdForUser(context.params.vehicleId, context.user!.userId);
   const vehicle = await softDeleteVehicle(context.params.vehicleId, context.user!.userId);
 
   if (!vehicle) {
     sendJson(context.res, 404, { code: "vehicle_not_found", message: "Автомобіль не знайдено." });
     return;
   }
+
+  await deleteManagedImageUrl(existingVehicle?.image_url);
 
   sendJson(context.res, 200, { item: vehicle });
 }

@@ -24,7 +24,13 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_USER: z.string().optional().default(""),
   SMTP_PASS: z.string().optional().default(""),
-  SMTP_FROM: z.string().email().default("notify@carmain.local")
+  SMTP_FROM: z.string().email().default("notify@carmain.local"),
+  R2_ACCOUNT_ID: z.string().optional().default(""),
+  R2_ACCESS_KEY_ID: z.string().optional().default(""),
+  R2_SECRET_ACCESS_KEY: z.string().optional().default(""),
+  R2_BUCKET: z.string().optional().default(""),
+  R2_PUBLIC_BASE_URL: z.string().optional().default(""),
+  CMS_UPLOAD_SECRET: z.string().optional().default("")
 });
 
 export const env = envSchema.parse({
@@ -43,5 +49,26 @@ export const env = envSchema.parse({
   SMTP_PORT: process.env.SMTP_PORT,
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
-  SMTP_FROM: process.env.SMTP_FROM
+  SMTP_FROM: process.env.SMTP_FROM,
+  R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+  R2_BUCKET: process.env.R2_BUCKET,
+  R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
+  CMS_UPLOAD_SECRET: process.env.CMS_UPLOAD_SECRET
 });
+
+export function isR2Configured(): boolean {
+  return Boolean(
+    env.R2_ACCOUNT_ID &&
+      env.R2_ACCESS_KEY_ID &&
+      env.R2_SECRET_ACCESS_KEY &&
+      env.R2_BUCKET &&
+      env.R2_PUBLIC_BASE_URL
+  );
+}
+
+export function r2PublicBaseUrl(): string | null {
+  const trimmed = env.R2_PUBLIC_BASE_URL.trim().replace(/\/+$/, "");
+  return trimmed.length > 0 ? trimmed : null;
+}

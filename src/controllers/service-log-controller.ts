@@ -2,6 +2,7 @@ import sanitizeHtml from "sanitize-html";
 import { z } from "zod";
 
 import { createServiceLog, deleteServiceLog, listServiceLogsByVehicle } from "../repositories/service-log-repository";
+import { findServiceStationById } from "../repositories/service-station-repository";
 import type { HandlerContext } from "../utils/http";
 import { sendJson } from "../utils/http";
 
@@ -9,6 +10,7 @@ const serviceLogSchema = z.object({
   serviceDate: z.string().date(),
   mileageKm: z.number().int().min(0),
   serviceStation: z.string().max(160).optional().nullable(),
+  serviceStationId: z.string().uuid().optional().nullable(),
   notesUk: z.string().max(2000).optional().nullable(),
   items: z.array(
     z.object({
@@ -25,13 +27,29 @@ export async function listServiceLogs(context: HandlerContext): Promise<void> {
 
 export async function createServiceLogHandler(context: HandlerContext): Promise<void> {
   const input = serviceLogSchema.parse(context.body);
+
+  let serviceStationId = input.serviceStationId ?? null;
+  let serviceStationText = input.serviceStation
+    ? sanitizeHtml(input.serviceStation, { allowedTags: [], allowedAttributes: {} })
+    : null;
+
+  if (serviceStationId) {
+    const station = await findServiceStationById(serviceStationId);
+
+    if (!station) {
+      sendJson(context.res, 400, { code: "invalid_service_station", message: "Обране СТО недоступне або не існує." });
+      return;
+    }
+
+    serviceStationText = station.name_uk;
+  }
+
   const serviceLog = await createServiceLog({
     vehicleId: context.params.vehicleId,
     serviceDate: input.serviceDate,
     mileageKm: input.mileageKm,
-    serviceStation: input.serviceStation
-      ? sanitizeHtml(input.serviceStation, { allowedTags: [], allowedAttributes: {} })
-      : null,
+    serviceStation: serviceStationText,
+    serviceStationId,
     notesUk: input.notesUk ? sanitizeHtml(input.notesUk, { allowedTags: [], allowedAttributes: {} }) : null,
     items: input.items.map((item) => ({
       procedureId: item.procedureId,

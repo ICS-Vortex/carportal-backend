@@ -7,6 +7,8 @@ export const API_ROUTES = {
     csrf: "/v1/auth/csrf",
     me: "/v1/auth/me",
     profile: "/v1/auth/profile",
+    avatarUpload: "/v1/auth/avatar",
+    preferences: "/v1/auth/preferences",
     register: "/v1/auth/register",
     login: "/v1/auth/login",
     google: "/v1/auth/google",
@@ -39,8 +41,13 @@ export const API_ROUTES = {
     maintenancePlanItemStatus: "/v1/vehicles/:vehicleId/maintenance-plan/items/:planItemId/status",
     maintenancePlanItemComplete: "/v1/vehicles/:vehicleId/maintenance-plan/items/:planItemId/complete"
   },
+  cms: {
+    serviceStationImages: "/v1/cms/service-station-images",
+    deleteManagedImage: "/v1/cms/managed-images/delete"
+  },
   catalog: {
     list: "/v1/catalog",
-    reminders: "/v1/reminders"
+    reminders: "/v1/reminders",
+    serviceStations: "/v1/service-stations"
   }
 } as const;

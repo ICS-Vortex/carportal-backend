@@ -1,5 +1,5 @@
 import { API_ROUTES } from "../constants/routes";
-import { changePassword, deleteAccount, getCsrf, googleLogin, login, logout, me, register, updateProfile } from "../controllers/auth-controller";
+import { changePassword, deleteAccount, getCsrf, googleLogin, login, logout, me, register, updatePreferences, updateProfile, uploadAvatar } from "../controllers/auth-controller";
 import {
   mobileGoogleLogin,
   mobileLogin,
@@ -16,6 +16,8 @@ export const authRoutes: RouteDefinition[] = [
   { method: "GET", path: API_ROUTES.auth.csrf, handler: getCsrf },
   { method: "GET", path: API_ROUTES.auth.me, handler: me },
   { method: "PATCH", path: API_ROUTES.auth.profile, handler: updateProfile, auth: true, csrf: true },
+  { method: "POST", path: API_ROUTES.auth.avatarUpload, handler: uploadAvatar, auth: true, csrf: true },
+  { method: "PATCH", path: API_ROUTES.auth.preferences, handler: updatePreferences, auth: true, csrf: true },
   { method: "POST", path: API_ROUTES.auth.register, handler: register, csrf: true },
   { method: "POST", path: API_ROUTES.auth.login, handler: login, csrf: true },
   { method: "POST", path: API_ROUTES.auth.google, handler: googleLogin, csrf: true },

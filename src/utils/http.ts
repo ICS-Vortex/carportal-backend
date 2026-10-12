@@ -11,6 +11,7 @@ export type HandlerContext = {
   req: IncomingMessage;
   res: ServerResponse;
   params: Record<string, string>;
+  query: Record<string, string | undefined>;
   body: unknown;
   user: AuthenticatedUser | null;
 };
@@ -21,6 +22,7 @@ export type RouteDefinition = {
   handler: (context: HandlerContext) => Promise<void>;
   auth?: boolean;
   csrf?: boolean;
+  cmsUpload?: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

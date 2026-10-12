@@ -59,6 +59,7 @@ export async function createServiceLog(input: {
   serviceDate: string;
   mileageKm: number;
   serviceStation?: string | null;
+  serviceStationId?: string | null;
   notesUk?: string | null;
   items: ServiceLogItemInput[];
 }): Promise<ServiceLogRecord> {
@@ -69,11 +70,18 @@ export async function createServiceLog(input: {
 
     const logResult = await client.query<ServiceLogRecord>(
       `
-        insert into service_logs (id, vehicle_id, service_date, mileage_km, service_station, notes_uk, created_at)
-        values (gen_random_uuid(), $1, $2, $3, $4, $5, now())
+        insert into service_logs (id, vehicle_id, service_date, mileage_km, service_station, service_station_id, notes_uk, created_at)
+        values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now())
         returning *
       `,
-      [input.vehicleId, input.serviceDate, input.mileageKm, input.serviceStation ?? null, input.notesUk ?? null]
+      [
+        input.vehicleId,
+        input.serviceDate,
+        input.mileageKm,
+        input.serviceStation ?? null,
+        input.serviceStationId ?? null,
+        input.notesUk ?? null
+      ]
     );
 
     for (const item of input.items) {

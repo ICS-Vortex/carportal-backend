@@ -13,11 +13,31 @@ const vehicleSelect = `
     vc.engine_label as engine_name,
     vc.transmission_label as transmission_name,
     vc.drivetrain_label,
+    vc.fuel_type,
     v.year,
     v.vin,
     v.license_plate,
     v.image_url,
     v.mileage_km,
+    (
+      select sl.service_date::text
+      from service_logs sl
+      where sl.vehicle_id = v.id
+      order by sl.service_date desc, sl.created_at desc
+      limit 1
+    ) as last_service_date,
+    (
+      select sl.mileage_km
+      from service_logs sl
+      where sl.vehicle_id = v.id
+      order by sl.service_date desc, sl.created_at desc
+      limit 1
+    ) as last_service_mileage_km,
+    exists (
+      select 1
+      from vehicle_maintenance_plans vmp
+      where vmp.vehicle_id = v.id
+    ) as has_maintenance_plan,
     v.deleted,
     v.deleted_at,
     v.created_at,

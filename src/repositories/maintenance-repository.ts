@@ -19,7 +19,15 @@ type TemplateHeader = {
   year_to: number | null;
   notes_uk: string | null;
   item_count: number;
+  station_id: string | null;
+  station_name_uk: string | null;
 };
+
+type ActiveTemplateMeta = {
+  id: string;
+  station_id: string | null;
+  station_name_uk: string | null;
+} | null;
 
 type TemplateVersion = {
   id: string;
@@ -61,6 +69,8 @@ export type VehicleMaintenancePlanView = {
     request_note: string | null;
     created_at: string;
   } | null;
+  serviceStationId: string | null;
+  activeTemplate: ActiveTemplateMeta;
 };
 
 type MissingPlanRequestSummary = {
@@ -142,7 +152,50 @@ function deriveItemState(item: VehicleMaintenancePlanItemRecord, currentMileageK
   };
 }
 
-export async function findMatchingTemplatesForVehicle(vehicle: VehicleRecord): Promise<TemplateHeader[]> {
+function resolveAutoAssignTemplate(templates: TemplateHeader[], serviceStationId: string | null): TemplateHeader | null {
+  if (templates.length === 0) {
+    return null;
+  }
+
+  if (templates.length === 1) {
+    return templates[0];
+  }
+
+  if (serviceStationId) {
+    const stationTemplates = templates.filter((template) => template.station_id === serviceStationId);
+
+    if (stationTemplates.length === 1) {
+      return stationTemplates[0];
+    }
+  }
+
+  return null;
+}
+
+async function getActiveTemplateMeta(templateId: string | null): Promise<ActiveTemplateMeta> {
+  if (!templateId) {
+    return null;
+  }
+
+  const result = await pool.query<{
+    id: string;
+    station_id: string | null;
+    station_name_uk: string | null;
+  }>(
+    `
+      select mst.id, mst.station_id, ss.name_uk as station_name_uk
+      from maintenance_schedule_templates mst
+      left join service_stations ss on ss.id = mst.station_id
+      where mst.id = $1 and mst.deleted = false
+      limit 1
+    `,
+    [templateId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function findMatchingTemplatesForVehicle(vehicle: VehicleRecord, serviceStationId?: string | null): Promise<TemplateHeader[]> {
   const result = await pool.query<TemplateHeader>(
     `
       select
@@ -163,25 +216,80 @@ export async function findMatchingTemplatesForVehicle(vehicle: VehicleRecord): P
         vg.year_from,
         vg.year_to,
         mst.notes_uk,
+        mst.station_id,
+        ss.name_uk as station_name_uk,
         count(msi.id)::int as item_count
       from maintenance_schedule_templates mst
       inner join vehicle_generations vg on vg.id = mst.generation_id
       inner join vehicle_models vm on vm.id = vg.model_id
       inner join vehicle_brands vb on vb.id = vm.brand_id
       left join vehicle_configurations vc on vc.id = mst.configuration_id
+      left join service_stations ss on ss.id = mst.station_id
       left join maintenance_schedule_items msi on msi.template_id = mst.id and msi.deleted = false
       where mst.deleted = false
         and (
           mst.configuration_id = $1
           or (mst.configuration_id is null and mst.generation_id = $2)
         )
-      group by mst.id, mst.name_uk, mst.generation_id, mst.configuration_id, vb.name, vm.name, vg.name, vc.id, vc.engine_label, vc.transmission_label, vc.drivetrain_label, vg.year_from, vg.year_to, mst.notes_uk
-      order by case when mst.configuration_id = $1 then 0 else 1 end asc, mst.name_uk asc
+        and (
+          $3::uuid is null
+          or mst.station_id is null
+          or mst.station_id = $3::uuid
+        )
+      group by mst.id, mst.name_uk, mst.generation_id, mst.configuration_id, vb.name, vm.name, vg.name, vc.id, vc.engine_label, vc.transmission_label, vc.drivetrain_label, vg.year_from, vg.year_to, mst.notes_uk, mst.station_id, ss.name_uk
+      order by
+        case when $3::uuid is not null and mst.station_id = $3::uuid then 0 when mst.station_id is null then 1 else 2 end asc,
+        case when mst.configuration_id = $1 then 0 else 1 end asc,
+        mst.name_uk asc
     `,
-    [vehicle.configuration_id, vehicle.generation_id]
+    [vehicle.configuration_id, vehicle.generation_id, serviceStationId ?? null]
   );
 
   return result.rows;
+}
+
+async function applyStationLaborPrices<T extends { procedure_id: string | null; labor_price_uah: number | null }>(
+  items: T[],
+  serviceStationId: string | null
+): Promise<T[]> {
+  if (!serviceStationId || items.length === 0) {
+    return items;
+  }
+
+  const procedureIds = items
+    .map((item) => item.procedure_id)
+    .filter((procedureId): procedureId is string => procedureId !== null);
+
+  if (procedureIds.length === 0) {
+    return items;
+  }
+
+  const prices = await pool.query<{ procedure_id: string; labor_price_uah: number }>(
+    `
+      select procedure_id, labor_price_uah
+      from maintenance_station_labor_prices
+      where station_id = $1
+        and schedule_item_id is null
+        and procedure_id = any($2::uuid[])
+    `,
+    [serviceStationId, procedureIds]
+  );
+
+  const priceByProcedure = new Map(prices.rows.map((row) => [row.procedure_id, row.labor_price_uah]));
+
+  return items.map((item) => {
+    if (!item.procedure_id) {
+      return item;
+    }
+
+    const stationPrice = priceByProcedure.get(item.procedure_id);
+
+    if (stationPrice === undefined) {
+      return item;
+    }
+
+    return { ...item, labor_price_uah: stationPrice };
+  });
 }
 
 export async function syncVehiclePlanForVehicleCatalogChange(vehicle: VehicleRecord): Promise<void> {
@@ -390,7 +498,11 @@ export async function syncPlanItemsWithHistoricalServiceLogs(input: {
   );
 }
 
-export async function getVehicleMaintenancePlan(vehicle: VehicleRecord, userId?: string): Promise<VehicleMaintenancePlanView> {
+export async function getVehicleMaintenancePlan(
+  vehicle: VehicleRecord,
+  userId?: string,
+  serviceStationId?: string | null
+): Promise<VehicleMaintenancePlanView> {
   await syncVehiclePlanForVehicleCatalogChange(vehicle);
 
   let planResult = await pool.query<VehicleMaintenancePlanRecord>(
@@ -398,11 +510,15 @@ export async function getVehicleMaintenancePlan(vehicle: VehicleRecord, userId?:
     [vehicle.id]
   );
 
-  const availableTemplates = await findMatchingTemplatesForVehicle(vehicle);
+  const availableTemplates = await findMatchingTemplatesForVehicle(vehicle, serviceStationId ?? null);
   const missingPlanRequest = userId ? await getOpenMissingPlanRequest(vehicle.id, userId) : null;
 
-  if (!planResult.rows[0] && availableTemplates.length === 1) {
-    await assignTemplateToVehicle(vehicle, availableTemplates[0].id);
+  const autoAssignTemplate = !planResult.rows[0]
+    ? resolveAutoAssignTemplate(availableTemplates, serviceStationId ?? null)
+    : null;
+
+  if (autoAssignTemplate) {
+    await assignTemplateToVehicle(vehicle, autoAssignTemplate.id);
     planResult = await pool.query<VehicleMaintenancePlanRecord>(
       "select * from vehicle_maintenance_plans where vehicle_id = $1 limit 1",
       [vehicle.id]
@@ -428,7 +544,9 @@ export async function getVehicleMaintenancePlan(vehicle: VehicleRecord, userId?:
         status: missingPlanRequest.status,
         request_note: missingPlanRequest.request_note,
         created_at: missingPlanRequest.created_at.toISOString()
-      } : null
+      } : null,
+      serviceStationId: serviceStationId ?? null,
+      activeTemplate: null
     };
   }
 
@@ -491,19 +609,28 @@ export async function getVehicleMaintenancePlan(vehicle: VehicleRecord, userId?:
           isStale: true,
           wasAutoReassigned: false,
           latestTemplateUpdatedAt: templateVersion.last_changed_at.toISOString(),
-          message: "Для цього авто зʼявилась новіша версія плану обслуговування. Поточні відмітки збережено, а оновлення можна виконати окремо через керування каталогом."
+          message: "Для цього авто зʼявилась новіша версія регламенту. Ваші відмітки збережено — напишіть у підтримку Carmain, щоб підключити оновлення."
         };
       }
     }
   }
 
+  const itemsWithStationPrices = await applyStationLaborPrices(
+    itemsResult.rows.map((item) => deriveItemState(item, vehicle.mileage_km)),
+    serviceStationId ?? null
+  );
+
+  const activeTemplate = await getActiveTemplateMeta(effectivePlan.template_id);
+
   return {
     vehicle,
     plan: effectivePlan,
-    items: itemsResult.rows.map((item) => deriveItemState(item, vehicle.mileage_km)),
+    items: itemsWithStationPrices,
     availableTemplates,
     templateSync,
-    missingPlanRequest: null
+    missingPlanRequest: null,
+    serviceStationId: serviceStationId ?? null,
+    activeTemplate
   };
 }
 

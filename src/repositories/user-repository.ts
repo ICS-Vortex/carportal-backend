@@ -73,6 +73,24 @@ export async function hasGoogleAccount(userId: string): Promise<boolean> {
   return result.rows[0]?.exists ?? false;
 }
 
+export async function updateUserPreferredServiceStation(input: {
+  userId: string;
+  preferredServiceStationId: string | null;
+}): Promise<UserRecord> {
+  const result = await pool.query<UserRecord>(
+    `
+      update users
+      set preferred_service_station_id = $2,
+          updated_at = now()
+      where id = $1
+      returning *
+    `,
+    [input.userId, input.preferredServiceStationId]
+  );
+
+  return result.rows[0];
+}
+
 export async function updateUserProfile(input: {
   userId: string;
   email: string;

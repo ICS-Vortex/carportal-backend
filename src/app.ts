@@ -5,6 +5,7 @@ import path from "node:path";
 import { ZodError } from "zod";
 
 import { env } from "./config/env";
+import { isAuthorizedCmsUpload } from "./utils/cms-upload-auth";
 import { pool } from "./db/pool";
 import { getAuthenticatedUser } from "./middleware/auth";
 import { findUserById } from "./repositories/user-repository";
@@ -104,12 +105,17 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
     const tokenUser = getAuthenticatedUser(req);
     let user = tokenUser;
 
-    if (route.auth && !user) {
+    if (route.cmsUpload) {
+      if (!isAuthorizedCmsUpload(req)) {
+        sendJson(res, 403, { code: "cms_upload_forbidden", message: "Немає доступу до завантаження з CMS." });
+        return;
+      }
+    } else if (route.auth && !user) {
       sendJson(res, 401, { code: "authentication_required", message: "Потрібна авторизація." });
       return;
     }
 
-    if (route.auth && user) {
+    if (!route.cmsUpload && route.auth && user) {
       const dbUser = await findUserById(user.userId);
 
       if (!dbUser || dbUser.deleted) {
@@ -135,7 +141,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       };
     }
 
-    if (route.csrf && req.method && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    if (!route.cmsUpload && route.csrf && req.method && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       const usesBearerAuth = typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ");
 
       if (!usesBearerAuth) {
@@ -158,7 +164,12 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       ? await readJsonBody(req)
       : undefined;
 
-    await route.handler({ req, res, params, body, user });
+    const query: Record<string, string | undefined> = {};
+    url.searchParams.forEach((value, key) => {
+      query[key] = value;
+    });
+
+    await route.handler({ req, res, params, query, body, user });
   } catch (error) {
     if (error instanceof SyntaxError) {
       sendJson(res, 400, { code: "invalid_json", message: "Некоректний JSON у тілі запиту." });

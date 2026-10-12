@@ -13,8 +13,12 @@ import {
   hasGoogleAccount,
   syncGoogleAccountEmail,
   updateUserPassword,
+  updateUserPreferredServiceStation,
   updateUserProfile
 } from "../repositories/user-repository";
+import { findServiceStationById } from "../repositories/service-station-repository";
+import { deleteManagedImageUrl, saveAvatarImageDataUrl } from "../services/image-upload";
+import type { UserRecord } from "../types/models";
 import type { HandlerContext } from "../utils/http";
 import { clearCookie, getCookies, sendJson, setCookie } from "../utils/http";
 import {
@@ -43,6 +47,10 @@ const profileSchema = z.object({
   avatarUrl: z.union([z.string().url(), z.literal(""), z.null()]).optional()
 });
 
+const preferencesSchema = z.object({
+  preferredServiceStationId: z.string().uuid().nullable()
+});
+
 const passwordSchema = z.object({
   currentPassword: z.string().min(8).optional(),
   newPassword: z.string().min(8)
@@ -52,6 +60,29 @@ const deleteAccountSchema = z.object({
   confirmationText: z.string().min(1),
   password: z.string().min(8).optional()
 });
+
+const avatarImageUploadSchema = z.object({
+  dataUrl: z.string().min(32)
+});
+
+export function sendImageUploadError(context: HandlerContext, error: unknown): boolean {
+  if (error instanceof Error && error.message === "UNSUPPORTED_IMAGE_TYPE") {
+    sendJson(context.res, 422, { code: "unsupported_image_type", message: "Підтримуються лише JPG, PNG та WEBP." });
+    return true;
+  }
+
+  if (error instanceof Error && error.message === "INVALID_IMAGE_SIZE") {
+    sendJson(context.res, 422, { code: "invalid_image_size", message: "Файл завеликий. Максимум 5 МБ." });
+    return true;
+  }
+
+  if (error instanceof Error && error.message === "INVALID_IMAGE_DATA_URL") {
+    sendJson(context.res, 422, { code: "invalid_image_data_url", message: "Некоректний формат файлу." });
+    return true;
+  }
+
+  return false;
+}
 
 let oauthClient: OAuth2Client | null = null;
 
@@ -97,19 +128,16 @@ function isWeakDisplayName(fullName: string, email: string): boolean {
   return normalized.toLowerCase() === email.toLowerCase() || normalized.toLowerCase() === localPart;
 }
 
-function toAuthUserPayload(user: {
-  id: string;
-  email: string;
-  full_name: string;
-  role: "user" | "admin";
-  avatar_url?: string | null;
-}) {
+async function toAuthUserPayload(user: UserRecord) {
   return {
     userId: user.id,
     email: user.email,
     fullName: user.full_name,
     role: user.role,
-    avatarUrl: user.avatar_url ?? null
+    avatarUrl: user.avatar_url ?? null,
+    preferredServiceStationId: user.preferred_service_station_id ?? null,
+    hasPassword: Boolean(user.password_hash),
+    hasGoogleAccount: await hasGoogleAccount(user.id)
   };
 }
 
@@ -173,7 +201,7 @@ export async function register(context: HandlerContext): Promise<void> {
 
   issueSession(context, user);
   sendJson(context.res, 201, {
-    user: toAuthUserPayload(user)
+    user: await toAuthUserPayload(user)
   });
 }
 
@@ -198,7 +226,7 @@ export async function login(context: HandlerContext): Promise<void> {
 
   issueSession(context, user);
   sendJson(context.res, 200, {
-    user: toAuthUserPayload(user)
+    user: await toAuthUserPayload(user)
   });
 }
 
@@ -247,7 +275,7 @@ export async function googleLogin(context: HandlerContext): Promise<void> {
   await attachGoogleAccount({ userId: user.id, googleSub: payload.sub, email: payload.email });
   issueSession(context, user);
   sendJson(context.res, 200, {
-    user: toAuthUserPayload(user)
+    user: await toAuthUserPayload(user)
   });
 }
 
@@ -279,26 +307,107 @@ export async function updateProfile(context: HandlerContext): Promise<void> {
     return;
   }
 
+  const previousAvatarUrl = currentUser.avatar_url;
+  const avatarUrl =
+    input.avatarUrl === undefined
+      ? currentUser.avatar_url
+      : input.avatarUrl
+        ? sanitizeHtml(input.avatarUrl, { allowedTags: [], allowedAttributes: {} })
+        : null;
+  const avatarChanged = input.avatarUrl !== undefined;
+
   const updatedUser = await updateUserProfile({
     userId: currentUser.id,
     email: normalizedEmail,
     fullName: sanitizeHtml(input.fullName, { allowedTags: [], allowedAttributes: {} }),
-    avatarUrl: input.avatarUrl ? sanitizeHtml(input.avatarUrl, { allowedTags: [], allowedAttributes: {} }) : null
+    avatarUrl
   });
+
+  if (avatarChanged && previousAvatarUrl && previousAvatarUrl !== avatarUrl) {
+    await deleteManagedImageUrl(previousAvatarUrl);
+  }
 
   await syncGoogleAccountEmail({ userId: updatedUser.id, email: normalizedEmail });
   issueSession(context, updatedUser);
 
   sendJson(context.res, 200, {
-    user: {
-      userId: updatedUser.id,
-      email: updatedUser.email,
-      fullName: updatedUser.full_name,
-      role: updatedUser.role,
-      avatarUrl: updatedUser.avatar_url,
-      hasPassword: Boolean(updatedUser.password_hash),
-      hasGoogleAccount: await hasGoogleAccount(updatedUser.id)
+    user: await toAuthUserPayload(updatedUser)
+  });
+}
+
+export async function uploadAvatar(context: HandlerContext): Promise<void> {
+  if (!context.user) {
+    sendJson(context.res, 401, { code: "unauthorized", message: "Неавторизовано." });
+    return;
+  }
+
+  const input = avatarImageUploadSchema.parse(context.body);
+  const currentUser = await findUserById(context.user.userId);
+
+  if (!currentUser) {
+    sendJson(context.res, 401, { code: "unauthorized", message: "Неавторизовано." });
+    return;
+  }
+
+  try {
+    const previousAvatarUrl = currentUser.avatar_url;
+    const avatarUrl = await saveAvatarImageDataUrl(input.dataUrl);
+    const updatedUser = await updateUserProfile({
+      userId: currentUser.id,
+      email: currentUser.email,
+      fullName: currentUser.full_name,
+      avatarUrl
+    });
+
+    if (previousAvatarUrl && previousAvatarUrl !== avatarUrl) {
+      await deleteManagedImageUrl(previousAvatarUrl);
     }
+
+    issueSession(context, updatedUser);
+
+    sendJson(context.res, 200, {
+      url: avatarUrl,
+      user: await toAuthUserPayload(updatedUser)
+    });
+  } catch (error) {
+    if (sendImageUploadError(context, error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+export async function updatePreferences(context: HandlerContext): Promise<void> {
+  if (!context.user) {
+    sendJson(context.res, 401, { code: "unauthorized", message: "Неавторизовано." });
+    return;
+  }
+
+  const input = preferencesSchema.parse(context.body);
+  const currentUser = await findUserById(context.user.userId);
+
+  if (!currentUser) {
+    sendJson(context.res, 401, { code: "unauthorized", message: "Неавторизовано." });
+    return;
+  }
+
+  if (input.preferredServiceStationId) {
+    const station = await findServiceStationById(input.preferredServiceStationId);
+
+    if (!station) {
+      sendJson(context.res, 400, { code: "invalid_service_station", message: "Обране СТО недоступне або не існує." });
+      return;
+    }
+  }
+
+  const updatedUser = await updateUserPreferredServiceStation({
+    userId: currentUser.id,
+    preferredServiceStationId: input.preferredServiceStationId
+  });
+
+  sendJson(context.res, 200, {
+    user: await toAuthUserPayload(updatedUser)
   });
 }
 
@@ -370,6 +479,7 @@ export async function deleteAccount(context: HandlerContext): Promise<void> {
     }
   }
 
+  await deleteManagedImageUrl(user.avatar_url);
   await deleteUserById(user.id);
   clearCookie(context.res, SESSION_COOKIE_NAME, true);
   clearCookie(context.res, CSRF_COOKIE_NAME);
@@ -401,18 +511,9 @@ export async function me(context: HandlerContext): Promise<void> {
   }
 
   const cookies = getCookies(context.req);
-  const googleConnected = await hasGoogleAccount(user.id);
 
   sendJson(context.res, 200, {
-    user: {
-      userId: user.id,
-      email: user.email,
-      fullName: user.full_name,
-      role: user.role,
-      avatarUrl: user.avatar_url,
-      hasPassword: Boolean(user.password_hash),
-      hasGoogleAccount: googleConnected
-    },
+    user: await toAuthUserPayload(user),
     csrfReady: Boolean(cookies[CSRF_COOKIE_NAME])
   });
 }
