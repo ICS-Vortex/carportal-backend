@@ -45,12 +45,13 @@ UPLOADS_DIR=./uploads
 GOOGLE_CLIENT_ID=
 ```
 
-3. Install dependencies and run migrations:
+3. Install dependencies:
 
 ```bash
 npm install
-npm run db:migrate
 ```
+
+Schema changes are applied by the CMS Doctrine migrations, not by this API.
 
 4. Start the API with hot reload:
 
@@ -75,16 +76,9 @@ npm run worker:dev
 | `npm run start` | Run compiled API |
 | `npm run worker:dev` | Reminder worker with hot reload |
 | `npm run worker:start` | Run compiled worker |
-| `npm run db:migrate` | Apply SQL migrations from `src/db/migrations` |
 | `npm run test:contracts` | Run OpenAPI contract tests |
 
-## Migrations
-
-Schema changes live in `src/db/migrations` as plain SQL files. The migration runner tracks applied files in a `schema_migrations` table.
-
-```bash
-npm run db:migrate
-```
+Schema changes belong to the CMS Doctrine migrations. This API only reads and writes the database.
 
 ## API docs
 
@@ -95,7 +89,6 @@ npm run db:migrate
 
 ```bash
 npm run build
-npm run db:migrate:start
 npm run start
 ```
 
