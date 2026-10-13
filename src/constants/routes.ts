@@ -48,6 +48,7 @@ export const API_ROUTES = {
   catalog: {
     list: "/v1/catalog",
     reminders: "/v1/reminders",
-    serviceStations: "/v1/service-stations"
+    serviceStations: "/v1/service-stations",
+    serviceStationAppointmentSlots: "/v1/service-stations/:stationId/appointment-slots"
   }
 } as const;

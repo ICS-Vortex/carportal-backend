@@ -94,8 +94,11 @@ export interface ServiceLogRecord {
   id: string;
   vehicle_id: string;
   service_date: string;
+  service_time: string | null;
+  record_kind: "visit" | "appointment";
   mileage_km: number;
   service_station: string | null;
+  service_station_id: string | null;
   notes_uk: string | null;
 }
 

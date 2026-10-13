@@ -175,15 +175,21 @@ export async function completeMaintenanceItem(context: HandlerContext): Promise<
     serviceStationLabel = station.name_uk;
   }
 
-  await createServiceLog({
+  const logResult = await createServiceLog({
     vehicleId: vehicle.id,
     serviceDate: input.serviceDate,
+    recordKind: "visit",
     mileageKm: input.mileageKm,
     serviceStation: serviceStationLabel,
     serviceStationId,
     notesUk: input.notesUk ?? null,
     items: [{ procedureId: item.procedure_id }]
   });
+
+  if ("code" in logResult) {
+    sendJson(context.res, 400, { code: logResult.code, message: logResult.message });
+    return;
+  }
 
   const nextPayload = await loadMaintenancePlanForContext(context, vehicle);
 

@@ -1,4 +1,6 @@
 import { pool } from "../db/pool";
+import { assertAppointmentSlotAvailable } from "../services/appointment-slot-service";
+import { compareDateStrings, kyivTodayDateString } from "../utils/kyiv-time";
 import { syncPlanItemsWithHistoricalServiceLogs, syncPlanItemsWithServiceLog } from "./maintenance-repository";
 import type { ServiceLogRecord } from "../types/models";
 
@@ -49,34 +51,88 @@ export async function listServiceLogsByVehicle(vehicleId: string, userId: string
   );
 
   return logsResult.rows.map((row) => ({
-    ...row,
+    ...normalizeServiceLogRow(row),
     items: itemsResult.rows.filter((item) => item.service_log_id === row.id)
   }));
 }
 
-export async function createServiceLog(input: {
+type CreateServiceLogInput = {
   vehicleId: string;
   serviceDate: string;
+  serviceTime?: string | null;
+  recordKind: "visit" | "appointment";
   mileageKm: number;
   serviceStation?: string | null;
   serviceStationId?: string | null;
   notesUk?: string | null;
   items: ServiceLogItemInput[];
-}): Promise<ServiceLogRecord> {
+};
+
+type CreateServiceLogError = {
+  code: string;
+  message: string;
+};
+
+function normalizeServiceLogRow(row: ServiceLogRecord): ServiceLogRecord {
+  return {
+    ...row,
+    service_time: row.service_time ? row.service_time.slice(0, 5) : null
+  };
+}
+
+export async function createServiceLog(input: CreateServiceLogInput): Promise<ServiceLogRecord | CreateServiceLogError> {
+  const today = kyivTodayDateString();
+
+  if (input.recordKind === "appointment") {
+    if (compareDateStrings(input.serviceDate, today) < 0) {
+      return { code: "past_service_date", message: "Неможливо обрати дату в минулому." };
+    }
+
+    if (!input.serviceStationId || !input.serviceTime) {
+      return { code: "invalid_appointment", message: "Для запису на СТО потрібні дата, час і станція." };
+    }
+  }
+
   const client = await pool.connect();
 
   try {
     await client.query("begin");
 
+    if (input.recordKind === "appointment" && input.serviceStationId && input.serviceTime) {
+      const slotCheck = await assertAppointmentSlotAvailable(client, {
+        stationId: input.serviceStationId,
+        serviceDate: input.serviceDate,
+        serviceTime: input.serviceTime
+      });
+
+      if (!slotCheck.ok) {
+        await client.query("rollback");
+        return { code: slotCheck.code, message: slotCheck.message };
+      }
+    }
+
     const logResult = await client.query<ServiceLogRecord>(
       `
-        insert into service_logs (id, vehicle_id, service_date, mileage_km, service_station, service_station_id, notes_uk, created_at)
-        values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now())
+        insert into service_logs (
+          id,
+          vehicle_id,
+          service_date,
+          service_time,
+          record_kind,
+          mileage_km,
+          service_station,
+          service_station_id,
+          notes_uk,
+          created_at
+        )
+        values (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, now())
         returning *
       `,
       [
         input.vehicleId,
         input.serviceDate,
+        input.serviceTime ?? null,
+        input.recordKind,
         input.mileageKm,
         input.serviceStation ?? null,
         input.serviceStationId ?? null,
@@ -94,21 +150,23 @@ export async function createServiceLog(input: {
       );
     }
 
-    await client.query(
-      "update vehicles set mileage_km = greatest(mileage_km, $2), updated_at = now() where id = $1 and deleted = false",
-      [input.vehicleId, input.mileageKm]
-    );
+    if (input.recordKind === "visit") {
+      await client.query(
+        "update vehicles set mileage_km = greatest(mileage_km, $2), updated_at = now() where id = $1 and deleted = false",
+        [input.vehicleId, input.mileageKm]
+      );
 
-    await syncPlanItemsWithServiceLog(client, {
-      vehicleId: input.vehicleId,
-      serviceLogId: logResult.rows[0].id,
-      serviceDate: input.serviceDate,
-      mileageKm: input.mileageKm,
-      procedureIds: input.items.map((item) => item.procedureId)
-    });
+      await syncPlanItemsWithServiceLog(client, {
+        vehicleId: input.vehicleId,
+        serviceLogId: logResult.rows[0].id,
+        serviceDate: input.serviceDate,
+        mileageKm: input.mileageKm,
+        procedureIds: input.items.map((item) => item.procedureId)
+      });
+    }
 
     await client.query("commit");
-    return logResult.rows[0];
+    return normalizeServiceLogRow(logResult.rows[0]);
   } catch (error) {
     await client.query("rollback");
     throw error;
